@@ -1,0 +1,4 @@
+polars
+fastapi
+uvicorn
+requests
