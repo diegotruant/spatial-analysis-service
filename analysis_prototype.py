@@ -1,5 +1,6 @@
 import polars as pl
 import random
+from typing import Dict, Optional
 
 def calculate_np(power_series: pl.Series) -> float:
     """
