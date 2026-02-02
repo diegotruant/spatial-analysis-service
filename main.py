@@ -1,10 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Union
 import polars as pl
-from analysis_prototype import analyze_activity
+from analysis_prototype import analyze_activity, calculate_pmc_trends
 from metabolic_engine import MetabolicEngine, MetabolicProfile
 from hrv_engine import HRVEngine
+from pdc_engine import PDCEngine, PDCAnalysisRequest, PowerCurvePoint
 
 app = FastAPI(title="Spatial Cosmic Analysis API")
 
@@ -12,7 +13,12 @@ app = FastAPI(title="Spatial Cosmic Analysis API")
 class AnalysisRequest(BaseModel):
     power_data: List[float]
     hr_data: Optional[List[float]] = None
+    cadence_data: Optional[List[float]] = None
     ftp: float
+    w_prime: float = 20000
+
+class PMCRequest(BaseModel):
+    tss_history: List[Dict[str, Union[float, str]]] # List of {"date": "YYYY-MM-DD", "tss": 100}
 
 class MetabolicRequest(BaseModel):
     weight: float
@@ -31,6 +37,13 @@ class HRVRequest(BaseModel):
     hrv_history: List[float] # Last 7-30 days
     full_history: Optional[List[Dict]] = None # For overreaching
 
+class PDCAnalysisRequestModel(BaseModel):
+    power_curve: List[Dict[str, Union[int, float, str]]]  # [{"duration": 5, "watts": 800, "date": "2024-01-01"}]
+    weight: float
+    cp: Optional[float] = None
+    w_prime: Optional[float] = None
+    vo2max: Optional[float] = None
+
 # --- Endpoints ---
 
 @app.get("/health")
@@ -43,9 +56,19 @@ async def analyze(request: AnalysisRequest):
         data = {"power": request.power_data}
         if request.hr_data:
             data["heart_rate"] = request.hr_data
+        if request.cadence_data:
+            data["cadence"] = request.cadence_data
             
         df = pl.DataFrame(data)
-        results = analyze_activity(df, request.ftp)
+        results = analyze_activity(df, request.ftp, request.w_prime)
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/pmc")
+async def calculate_pmc(request: PMCRequest):
+    try:
+        results = calculate_pmc_trends(request.tss_history)
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -92,6 +115,38 @@ async def analyze_hrv(request: HRVRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/pdc/analyze")
+async def analyze_pdc(request: PDCAnalysisRequestModel):
+    try:
+        # Converti i dati in PowerCurvePoint
+        power_curve_points = [
+            PowerCurvePoint(
+                duration=int(p["duration"]),
+                watts=float(p["watts"]),
+                date=p.get("date")
+            )
+            for p in request.power_curve
+        ]
+        
+        # Crea la richiesta per PDCEngine
+        pdc_request = PDCAnalysisRequest(
+            power_curve=power_curve_points,
+            weight=request.weight,
+            cp=request.cp,
+            w_prime=request.w_prime,
+            vo2max=request.vo2max
+        )
+        
+        # Esegui l'analisi
+        analysis = PDCEngine.analyze(pdc_request)
+        
+        # Converti la risposta in dict per JSON
+        return analysis.model_dump()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import os
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
