@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Union
+from enum import Enum
 import polars as pl
 from analysis_prototype import analyze_activity, calculate_pmc_trends
 from metabolic_engine import MetabolicEngine, MetabolicProfile
@@ -141,7 +142,23 @@ async def analyze_pdc(request: PDCAnalysisRequestModel):
         analysis = PDCEngine.analyze(pdc_request)
         
         # Converti la risposta in dict per JSON
-        return analysis.model_dump()
+        # Usa model_dump() per pydantic v2, dict() per v1
+        if hasattr(analysis, 'model_dump'):
+            result = analysis.model_dump()
+        else:
+            result = analysis.dict()
+        
+        # Assicurati che enum siano stringhe
+        if isinstance(result.get('phenotype'), Enum):
+            result['phenotype'] = result['phenotype'].value
+        
+        # Converti anche gli enum in strengths
+        if 'strengths' in result:
+            for key in result['strengths']:
+                if isinstance(result['strengths'][key], Enum):
+                    result['strengths'][key] = result['strengths'][key].value
+        
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

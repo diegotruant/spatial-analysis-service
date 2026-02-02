@@ -381,7 +381,7 @@ class PDCEngine:
         vo2max_estimated = vo2max or (power_values.vo2max5min / weight * 12)  # Stima semplificata
         sprint_power = power_values.sprint5s / weight
         anaerobic_capacity = (w_prime / 1000) if w_prime else 15.8  # kJ
-        p_max = power_values.sprint5s or max([power_values.sprint5s, power_values.sprint10s])
+        p_max = max(power_values.sprint5s, power_values.sprint10s) if power_values.sprint10s > 0 else power_values.sprint5s
         aerobic_power = p_max - critical_power  # APR
         tte_vo2max = PDCEngine._calculate_tte_vo2max(vo2max_estimated, power_values.vo2max5min, weight)
         
