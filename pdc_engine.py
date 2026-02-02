@@ -186,6 +186,9 @@ class PDCEngine:
             # Ordina per durata
             sorted_curve = sorted(power_curve, key=lambda x: x.duration)
             
+            if not sorted_curve:
+                return 0.0
+            
             # Trova punti precedente e successivo
             prev = None
             next_p = None
@@ -199,17 +202,29 @@ class PDCEngine:
             
             # Interpolazione logaritmica
             if prev and next_p:
+                # Evita divisione per zero
+                if prev.duration == next_p.duration:
+                    return prev.watts
                 log_d = np.log(duration)
                 log_prev = np.log(prev.duration)
                 log_next = np.log(next_p.duration)
                 ratio = (log_d - log_prev) / (log_next - log_prev)
                 return prev.watts + (next_p.watts - prev.watts) * ratio
             
-            if prev:
+            # Se non c'è punto precedente, usa il più vicino disponibile (estrapolazione)
+            if next_p and not prev:
+                # Usa il valore più vicino disponibile (estrapolazione conservativa)
+                return next_p.watts
+            
+            # Se non c'è punto successivo, usa il più vicino disponibile
+            if prev and not next_p:
+                # Usa il valore più vicino disponibile
                 return prev.watts
             
-            if next_p:
-                return next_p.watts
+            # Fallback: usa il valore più vicino in assoluto
+            if sorted_curve:
+                closest = min(sorted_curve, key=lambda x: abs(x.duration - duration))
+                return closest.watts
             
             return 0.0
         
