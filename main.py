@@ -148,14 +148,19 @@ async def analyze_pdc(request: PDCAnalysisRequestModel):
         else:
             result = analysis.dict()
         
-        # Assicurati che enum siano stringhe
-        if isinstance(result.get('phenotype'), Enum):
-            result['phenotype'] = result['phenotype'].value
+        # Assicurati che enum siano stringhe (per compatibilità JSON)
+        if 'phenotype' in result:
+            if isinstance(result['phenotype'], Enum):
+                result['phenotype'] = result['phenotype'].value
+            elif hasattr(result['phenotype'], 'value'):
+                result['phenotype'] = result['phenotype'].value
         
         # Converti anche gli enum in strengths
-        if 'strengths' in result:
+        if 'strengths' in result and isinstance(result['strengths'], dict):
             for key in result['strengths']:
                 if isinstance(result['strengths'][key], Enum):
+                    result['strengths'][key] = result['strengths'][key].value
+                elif hasattr(result['strengths'][key], 'value'):
                     result['strengths'][key] = result['strengths'][key].value
         
         return result
