@@ -7,6 +7,10 @@ class CombustionData(BaseModel):
     fat_oxidation: float
     carb_oxidation: float
 
+class PDCPoint(BaseModel):
+    duration_seconds: int
+    watt: float
+
 class MetabolicZone(BaseModel):
     name: str
     min_watt: int
@@ -27,6 +31,7 @@ class MetabolicProfile(BaseModel):
     carb_rate_at_ftp: float
     zones: list[MetabolicZone]
     combustion_curve: list[CombustionData]
+    pdc_curve: list[PDCPoint] = []
 
 class MetabolicEngine:
     @staticmethod
@@ -91,7 +96,8 @@ class MetabolicEngine:
             tdee=int(round(tdee)),
             carb_rate_at_ftp=round(50 + clamp_vla_max * 45, 1),
             zones=zones,
-            combustion_curve=combustion_curve
+            combustion_curve=combustion_curve,
+            pdc_curve=MetabolicEngine._generate_pdc_curve(cp, w_prime_work, p_max)
         )
 
     @staticmethod
@@ -155,3 +161,15 @@ class MetabolicEngine:
             carb_ox = min(100.0, carb_ox)
             data.append(CombustionData(watt=w, fat_oxidation=round(fat_ox, 1), carb_oxidation=round(carb_ox, 1)))
         return data
+
+    @staticmethod
+    def _generate_pdc_curve(cp: float, w_prime: float, p_max: float) -> list[PDCPoint]:
+        """Genera punti per la curva PD modellata (P = CP + W'/t)"""
+        durations = [1, 5, 10, 30, 60, 120, 300, 600, 1200, 1800, 3600]
+        curve = []
+        for t in durations:
+            # Modello Monod-Scherrer con limitatore a Pmax
+            p = cp + (w_prime / t)
+            p = min(p, p_max)
+            curve.append(PDCPoint(duration_seconds=t, watt=round(p, 1)))
+        return curve
