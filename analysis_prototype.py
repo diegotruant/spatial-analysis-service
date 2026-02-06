@@ -115,6 +115,44 @@ def analyze_activity(df: pl.DataFrame, ftp: float, rhr: Optional[float] = None) 
         "decoupling": round(decoupling, 2) if decoupling else None
     }
 
+def calculate_pmc_trends(tss_history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Calculates PMC trends (CTL, ATL, TSB) from TSS history.
+    tss_history: List of {"date": "YYYY-MM-DD", "tss": float}
+    """
+    if not tss_history:
+        return []
+
+    # Sort by date
+    history = sorted(tss_history, key=lambda x: x["date"])
+    
+    ctl = 0.0
+    atl = 0.0
+    results = []
+
+    # Time constants (standard Coggan values)
+    ctl_tc = 42.0
+    atl_tc = 7.0
+
+    for entry in history:
+        tss = float(entry.get("tss", 0.0))
+        
+        # Exponentially Weighted Moving Average
+        # New CTL = Old CTL + (TSS - Old CTL) / 42
+        ctl = ctl + (tss - ctl) / ctl_tc
+        atl = atl + (tss - atl) / atl_tc
+        tsb = ctl - atl
+        
+        results.append({
+            "date": entry["date"],
+            "tss": tss,
+            "ctl": round(ctl, 1),
+            "atl": round(atl, 1),
+            "tsb": round(tsb, 1)
+        })
+
+    return results
+
 # Example usage with mock data
 if __name__ == "__main__":
     # Create 1 hour of mock data (3600 seconds)
