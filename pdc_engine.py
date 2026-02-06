@@ -186,9 +186,6 @@ class PDCEngine:
             # Ordina per durata
             sorted_curve = sorted(power_curve, key=lambda x: x.duration)
             
-            if not sorted_curve:
-                return 0.0
-            
             # Trova punti precedente e successivo
             prev = None
             next_p = None
@@ -202,29 +199,17 @@ class PDCEngine:
             
             # Interpolazione logaritmica
             if prev and next_p:
-                # Evita divisione per zero
-                if prev.duration == next_p.duration:
-                    return prev.watts
                 log_d = np.log(duration)
                 log_prev = np.log(prev.duration)
                 log_next = np.log(next_p.duration)
                 ratio = (log_d - log_prev) / (log_next - log_prev)
                 return prev.watts + (next_p.watts - prev.watts) * ratio
             
-            # Se non c'è punto precedente, usa il più vicino disponibile (estrapolazione)
-            if next_p and not prev:
-                # Usa il valore più vicino disponibile (estrapolazione conservativa)
-                return next_p.watts
-            
-            # Se non c'è punto successivo, usa il più vicino disponibile
-            if prev and not next_p:
-                # Usa il valore più vicino disponibile
+            if prev:
                 return prev.watts
             
-            # Fallback: usa il valore più vicino in assoluto
-            if sorted_curve:
-                closest = min(sorted_curve, key=lambda x: abs(x.duration - duration))
-                return closest.watts
+            if next_p:
+                return next_p.watts
             
             return 0.0
         
@@ -263,13 +248,10 @@ class PDCEngine:
                 return 95
             return 99
         
-        if weight <= 0:
-            return Percentiles(sprint=99, anaerobic=99, vo2max=99, threshold=99)
-        
-        sprint_wkg = (power_values.sprint5s + power_values.sprint10s) / 2 / weight if (power_values.sprint5s + power_values.sprint10s) > 0 else 0
-        anaerobic_wkg = (power_values.anaerobic30s + power_values.anaerobic1min) / 2 / weight if (power_values.anaerobic30s + power_values.anaerobic1min) > 0 else 0
-        vo2max_wkg = (power_values.vo2max3min + power_values.vo2max5min) / 2 / weight if (power_values.vo2max3min + power_values.vo2max5min) > 0 else 0
-        threshold_wkg = (power_values.threshold10min + power_values.threshold20min) / 2 / weight if (power_values.threshold10min + power_values.threshold20min) > 0 else 0
+        sprint_wkg = (power_values.sprint5s + power_values.sprint10s) / 2 / weight
+        anaerobic_wkg = (power_values.anaerobic30s + power_values.anaerobic1min) / 2 / weight
+        vo2max_wkg = (power_values.vo2max3min + power_values.vo2max5min) / 2 / weight
+        threshold_wkg = (power_values.threshold10min + power_values.threshold20min) / 2 / weight
         
         return Percentiles(
             sprint=calc_percentile(sprint_wkg, 'sprint'),
@@ -288,13 +270,10 @@ class PDCEngine:
     ) -> Phenotype:
         """Identifica il fenotipo basandosi sulla distribuzione della potenza"""
         
-        if weight <= 0:
-            return Phenotype.ALL_ROUNDER
-        
-        sprint_wkg = sprint5s / weight if sprint5s > 0 else 0
-        anaerobic_wkg = anaerobic1min / weight if anaerobic1min > 0 else 0
-        vo2max_wkg = vo2max5min / weight if vo2max5min > 0 else 0
-        threshold_wkg = threshold20min / weight if threshold20min > 0 else 0
+        sprint_wkg = sprint5s / weight
+        anaerobic_wkg = anaerobic1min / weight
+        vo2max_wkg = vo2max5min / weight
+        threshold_wkg = threshold20min / weight
         
         # Calcola deviazioni dalla mediana
         sprint_dev = sprint_wkg / PERCENTILE_REFERENCE['sprint'][50]
@@ -399,10 +378,10 @@ class PDCEngine:
         
         ftp_estimated = power_values.threshold20min or cp or 0
         critical_power = cp or power_values.threshold20min or 0
-        vo2max_estimated = vo2max or (power_values.vo2max5min / weight * 12 if weight > 0 and power_values.vo2max5min > 0 else 50)  # Stima semplificata
-        sprint_power = power_values.sprint5s / weight if weight > 0 and power_values.sprint5s > 0 else 0
+        vo2max_estimated = vo2max or (power_values.vo2max5min / weight * 12)  # Stima semplificata
+        sprint_power = power_values.sprint5s / weight
         anaerobic_capacity = (w_prime / 1000) if w_prime else 15.8  # kJ
-        p_max = max(power_values.sprint5s, power_values.sprint10s) if power_values.sprint10s > 0 else power_values.sprint5s
+        p_max = power_values.sprint5s or max([power_values.sprint5s, power_values.sprint10s])
         aerobic_power = p_max - critical_power  # APR
         tte_vo2max = PDCEngine._calculate_tte_vo2max(vo2max_estimated, power_values.vo2max5min, weight)
         
@@ -420,8 +399,6 @@ class PDCEngine:
     @staticmethod
     def _calculate_tte_vo2max(vo2max: float, vo2max_power: float, weight: float) -> float:
         """Calcola TTE @ VO2max (Time to Exhaustion)"""
-        if weight <= 0 or vo2max_power <= 0:
-            return 4.0  # Default
         vo2max_wkg = vo2max_power / weight
         estimated_tte = 4 + (vo2max_wkg - 4.0) * 0.5  # Stima empirica
         return max(2, min(8, estimated_tte))  # Clamp tra 2 e 8 minuti
@@ -429,8 +406,6 @@ class PDCEngine:
     @staticmethod
     def _determine_coggan_category(threshold20min: float, weight: float) -> str:
         """Determina categoria Coggan basata su W/kg"""
-        if weight <= 0 or threshold20min <= 0:
-            return "Moderate"
         avg_wkg = threshold20min / weight
         
         if avg_wkg >= 4.0:

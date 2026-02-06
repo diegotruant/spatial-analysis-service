@@ -19,7 +19,6 @@ class MetabolicProfile(BaseModel):
     map: float
     vo2max: float
     mlss: int
-    cp: float  # Critical Power - aggiunto per sincronizzazione con PDC
     w_prime: int
     fat_max: int
     confidence_score: float
@@ -85,7 +84,6 @@ class MetabolicEngine:
             map=round(map_aerobic, 1),
             vo2max=round(vo2_max, 1),
             mlss=int(round(mlss)),
-            cp=round(cp, 1),  # Aggiunto CP per sincronizzazione
             w_prime=int(round(w_prime_work)),
             fat_max=int(round(fat_max)),
             confidence_score=round(confidence, 2),

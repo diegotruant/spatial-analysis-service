@@ -1,14 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Union
-from enum import Enum
 import polars as pl
 from analysis_prototype import analyze_activity, calculate_pmc_trends
 from metabolic_engine import MetabolicEngine, MetabolicProfile
 from hrv_engine import HRVEngine
 from pdc_engine import PDCEngine, PDCAnalysisRequest, PowerCurvePoint
 
-app = FastAPI(title="Spatial Cosmic Analysis API")
+app = FastAPI(title="Velo Lab Analysis API")
 
 # --- Models ---
 class AnalysisRequest(BaseModel):
@@ -49,7 +48,7 @@ class PDCAnalysisRequestModel(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "spatial-cosmic-analysis"}
+    return {"status": "healthy", "service": "velo-lab-analysis"}
 
 @app.post("/analyze")
 async def analyze(request: AnalysisRequest):
@@ -142,28 +141,7 @@ async def analyze_pdc(request: PDCAnalysisRequestModel):
         analysis = PDCEngine.analyze(pdc_request)
         
         # Converti la risposta in dict per JSON
-        # Usa model_dump() per pydantic v2, dict() per v1
-        if hasattr(analysis, 'model_dump'):
-            result = analysis.model_dump()
-        else:
-            result = analysis.dict()
-        
-        # Assicurati che enum siano stringhe (per compatibilità JSON)
-        if 'phenotype' in result:
-            if isinstance(result['phenotype'], Enum):
-                result['phenotype'] = result['phenotype'].value
-            elif hasattr(result['phenotype'], 'value'):
-                result['phenotype'] = result['phenotype'].value
-        
-        # Converti anche gli enum in strengths
-        if 'strengths' in result and isinstance(result['strengths'], dict):
-            for key in result['strengths']:
-                if isinstance(result['strengths'][key], Enum):
-                    result['strengths'][key] = result['strengths'][key].value
-                elif hasattr(result['strengths'][key], 'value'):
-                    result['strengths'][key] = result['strengths'][key].value
-        
-        return result
+        return analysis.model_dump()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

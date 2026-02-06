@@ -1,6 +1,6 @@
 import polars as pl
 import random
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 
 def calculate_np(power_series: pl.Series) -> float:
     """
@@ -104,42 +104,10 @@ def analyze_activity(df: pl.DataFrame, ftp: float, rhr: Optional[float] = None) 
     return {
         "duration_seconds": duration,
         "normalized_power": round(np_val, 2),
-        "tss": round(tss, 2),
+        "tss": round(tss_val, 2),
         "intensity_factor": round(if_val, 3),
-        "peak_powers": calculate_peak_powers(power_series)
+        "peak_powers": peak_powers
     }
-
-def calculate_pmc_trends(tss_history: List[Dict]) -> List[Dict]:
-    """
-    Calculates CTL, ATL, TSB trends from a list of (date, tss).
-    PMC (Performance Management Chart) calculation using exponential moving averages.
-    """
-    # Sort history by date
-    history = sorted(tss_history, key=lambda x: x.get('date', ''))
-    if not history:
-        return []
-
-    ctl = 0.0  # Chronic Training Load (42-day time constant)
-    atl = 0.0  # Acute Training Load (7-day time constant)
-    results = []
-
-    for entry in history:
-        tss = entry.get('tss', 0.0)
-        # CTL = Today's TSS * (1/42) + Yesterday's CTL * (41/42)
-        ctl = tss * (1/42) + ctl * (41/42)
-        # ATL = Today's TSS * (1/7) + Yesterday's ATL * (6/7)
-        atl = tss * (1/7) + atl * (6/7)
-        tsb = ctl - atl  # Training Stress Balance
-        
-        results.append({
-            "date": entry.get('date', ''),
-            "ctl": round(ctl, 2),
-            "atl": round(atl, 2),
-            "tsb": round(tsb, 2),
-            "tss": tss
-        })
-    
-    return results
 
 # Example usage with mock data
 if __name__ == "__main__":
