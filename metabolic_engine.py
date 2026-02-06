@@ -1,5 +1,5 @@
 import math
-from typing import List, Dict, Optional, Literal, Union
+from typing import Optional, Literal, Union, Any
 from pydantic import BaseModel
 
 class CombustionData(BaseModel):
@@ -25,8 +25,8 @@ class MetabolicProfile(BaseModel):
     bmr: int
     tdee: int
     carb_rate_at_ftp: float
-    zones: List[MetabolicZone]
-    combustion_curve: List[CombustionData]
+    zones: list[MetabolicZone]
+    combustion_curve: list[CombustionData]
 
 class MetabolicEngine:
     @staticmethod

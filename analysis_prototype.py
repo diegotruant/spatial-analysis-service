@@ -1,6 +1,6 @@
 import polars as pl
 import random
-from typing import Dict, Optional
+from typing import Optional, List, Any
 
 def calculate_np(power_series: pl.Series) -> float:
     """
@@ -36,7 +36,7 @@ def calculate_tss(np_val: float, ftp: float, duration_seconds: int) -> float:
     tss = (duration_seconds * np_val * intensity_factor) / (ftp * 3600) * 100
     return float(tss)
 
-def calculate_peak_powers(power_series: pl.Series) -> Dict[str, float]:
+def calculate_peak_powers(power_series: pl.Series) -> dict[str, float]:
     """
     Calculates peak powers for various durations using Polars rolling_mean and max.
     """
@@ -47,7 +47,7 @@ def calculate_peak_powers(power_series: pl.Series) -> Dict[str, float]:
         "20m": float(power_series.rolling_mean(window_size=1200).max() or 0),
     }
 
-def analyze_activity(df: pl.DataFrame, ftp: float, rhr: Optional[float] = None) -> Dict:
+def analyze_activity(df: pl.DataFrame, ftp: float, rhr: Optional[float] = None) -> dict:
     """
     Performs full analysis on a DataFrame containing 'power' column.
     """
@@ -101,12 +101,18 @@ def analyze_activity(df: pl.DataFrame, ftp: float, rhr: Optional[float] = None) 
                     ef2 = second_half_avg_power / second_half_avg_hr
                     decoupling = ((ef1 - ef2) / ef1) * 100 if ef1 > 0 else None
 
+    # Calculate peak powers
+    peak_powers = calculate_peak_powers(power_series)
+
     return {
         "duration_seconds": duration,
         "normalized_power": round(np_val, 2),
-        "tss": round(tss_val, 2),
+        "tss": round(tss, 2),
         "intensity_factor": round(if_val, 3),
-        "peak_powers": peak_powers
+        "peak_powers": peak_powers,
+        "variability_index": round(vi, 2),
+        "efficiency_factor": round(ef, 2) if ef else None,
+        "decoupling": round(decoupling, 2) if decoupling else None
     }
 
 # Example usage with mock data

@@ -1,12 +1,12 @@
 import polars as pl
-from typing import List, Dict, Optional, Literal
+from typing import Optional, Literal
 
 TrafficLightStatus = Literal['GREEN', 'YELLOW', 'RED']
 OverreachingStatus = Literal['NORMAL', 'FOR', 'NFOR', 'WARNING']
 
 class HRVEngine:
     @staticmethod
-    def calculate_baseline(values: List[float], window_days: int = 7) -> Dict:
+    def calculate_baseline(values: list[float], window_days: int = 7) -> dict:
         """
         Calculate dynamic baseline from recent HRV measurements.
         Standard: 7-30 day rolling average.
@@ -36,7 +36,7 @@ class HRVEngine:
         }
 
     @staticmethod
-    def calculate_traffic_light(current: float, baseline: float) -> Dict:
+    def calculate_traffic_light(current: float, baseline: float) -> dict:
         if baseline <= 0:
             return {"status": "YELLOW", "deviation": 0.0}
 
@@ -63,7 +63,7 @@ class HRVEngine:
                 else '🔴 Sistema parasimpatico soppresso - Annulla sessione intensa. Recupero attivo o riposo.'
 
     @staticmethod
-    def analyze_overreaching(history: List[Dict], baseline: float) -> Dict:
+    def analyze_overreaching(history: list[dict], baseline: float) -> dict:
         """
         Analyze overreaching status based on HRV pattern (last 21 days).
         """
