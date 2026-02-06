@@ -127,7 +127,7 @@ class MetabolicEngine:
         return min(max(score, 0.1), 1.0)
 
     @staticmethod
-    def _calculate_zones(ftp: float, fat_max_watt: float, map_val: float) -> List[MetabolicZone]:
+    def _calculate_zones(ftp: float, fat_max_watt: float, map_val: float) -> list[MetabolicZone]:
         z1_limit = int(round(ftp * 0.55))
         z2_limit = int(round(fat_max_watt + 15))
         safe_z2 = max(z2_limit, z1_limit + 10)
@@ -144,7 +144,7 @@ class MetabolicEngine:
         ]
 
     @staticmethod
-    def _calculate_combustion_curve(map_val: float, fat_max_watt: float, vlamax: float) -> List[CombustionData]:
+    def _calculate_combustion_curve(map_val: float, fat_max_watt: float, vlamax: float) -> list[CombustionData]:
         data = []
         end_watt = int(map_val * 1.3)
         for w in range(50, end_watt + 1, 10):

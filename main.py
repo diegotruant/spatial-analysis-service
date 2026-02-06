@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Union
+from typing import Optional, Union, Any
 import polars as pl
 from analysis_prototype import analyze_activity, calculate_pmc_trends
 from metabolic_engine import MetabolicEngine, MetabolicProfile
@@ -11,14 +11,14 @@ app = FastAPI(title="Velo Lab Analysis API")
 
 # --- Models ---
 class AnalysisRequest(BaseModel):
-    power_data: List[float]
-    hr_data: Optional[List[float]] = None
-    cadence_data: Optional[List[float]] = None
+    power_data: list[float]
+    hr_data: Optional[list[float]] = None
+    cadence_data: Optional[list[float]] = None
     ftp: float
     w_prime: float = 20000
 
 class PMCRequest(BaseModel):
-    tss_history: List[Dict[str, Union[float, str]]] # List of {"date": "YYYY-MM-DD", "tss": 100}
+    tss_history: list[dict[str, Union[float, str]]] # List of {"date": "YYYY-MM-DD", "tss": 100}
 
 class MetabolicRequest(BaseModel):
     weight: float
@@ -34,11 +34,11 @@ class MetabolicRequest(BaseModel):
 
 class HRVRequest(BaseModel):
     hrv_current: float
-    hrv_history: List[float] # Last 7-30 days
-    full_history: Optional[List[Dict]] = None # For overreaching
+    hrv_history: list[float] # Last 7-30 days
+    full_history: Optional[list[dict]] = None # For overreaching
 
 class PDCAnalysisRequestModel(BaseModel):
-    power_curve: List[Dict[str, Union[int, float, str]]]  # [{"duration": 5, "watts": 800, "date": "2024-01-01"}]
+    power_curve: list[dict[str, Union[int, float, str]]]  # [{"duration": 5, "watts": 800, "date": "2024-01-01"}]
     weight: float
     cp: Optional[float] = None
     w_prime: Optional[float] = None

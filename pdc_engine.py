@@ -4,7 +4,7 @@ Analizza la curva di potenza dell'atleta per identificare fenotipo, percentili e
 """
 
 import numpy as np
-from typing import List, Dict, Optional, Literal
+from typing import Optional, Literal
 from pydantic import BaseModel
 from enum import Enum
 
@@ -30,7 +30,7 @@ class PowerCurvePoint(BaseModel):
 
 
 class PDCAnalysisRequest(BaseModel):
-    power_curve: List[PowerCurvePoint]
+    power_curve: list[PowerCurvePoint]
     weight: float
     cp: Optional[float] = None
     w_prime: Optional[float] = None
@@ -174,7 +174,7 @@ class PDCEngine:
         )
     
     @staticmethod
-    def _extract_power_values(power_curve: List[PowerCurvePoint]) -> PowerValues:
+    def _extract_power_values(power_curve: list[PowerCurvePoint]) -> PowerValues:
         """Estrae valori di potenza per durate chiave con interpolazione logaritmica"""
         
         def get_power_at(duration: int) -> float:
@@ -315,7 +315,7 @@ class PDCEngine:
         )
     
     @staticmethod
-    def _analyze_curve_shape(power_curve: List[PowerCurvePoint]) -> CurveAnalysis:
+    def _analyze_curve_shape(power_curve: list[PowerCurvePoint]) -> CurveAnalysis:
         """Analizza la forma della curva per identificare pattern"""
         
         if len(power_curve) < 3:
@@ -420,7 +420,7 @@ class PDCEngine:
             return "Fair"
     
     @staticmethod
-    def _get_phenotype_info(phenotype: Phenotype) -> Dict[str, str]:
+    def _get_phenotype_info(phenotype: Phenotype) -> dict[str, str]:
         """Restituisce informazioni sul fenotipo"""
         info = {
             Phenotype.ALL_ROUNDER: {
