@@ -2,6 +2,152 @@ import math
 from typing import Optional, Literal, Union, Any
 from pydantic import BaseModel
 
+# Try to import scipy for 3-point CP model, fallback to 2-point if unavailable
+try:
+    from scipy.optimize import curve_fit
+    import numpy as np
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+
+
+def calculate_cp_wprime(
+    mmp_data: dict[int, float],
+    use_3point: bool = False
+) -> tuple[float, float, dict]:
+    """
+    Calculates Critical Power (CP) and W' using 2-point or 3-point model.
+    
+    Args:
+        mmp_data: Dictionary of {duration_seconds: power_watts}
+                  e.g., {180: 350, 360: 320, 900: 280, 420: 310, 720: 295}
+        use_3point: If True and scipy available, use 3-point non-linear regression
+    
+    Returns:
+        (cp, w_prime, metadata)
+        - cp: Critical Power in watts
+        - w_prime: Anaerobic work capacity in joules
+        - metadata: Dict with model info, confidence, etc.
+    
+    Models:
+        2-point: Linear model using 2 durations (typically 6' and 15')
+                 CP = (W₂ - W₁) / (t₂ - t₁)
+                 W' = W₁ - CP × t₁
+        
+        3-point: Non-linear hyperbolic model P = CP + W'/t
+                 Uses scipy.optimize.curve_fit for best fit
+    """
+    if len(mmp_data) < 2:
+        raise ValueError("Need at least 2 MMP values to calculate CP")
+    
+    # Sort by duration
+    sorted_durations = sorted(mmp_data.keys())
+    
+    # 2-Point Model (Linear - Default and Fallback)
+    if not use_3point or not SCIPY_AVAILABLE or len(mmp_data) < 3:
+        # Use longest two durations for 2-point model
+        # Typically 6min (360s) and 15min (900s)
+        if len(sorted_durations) >= 2:
+            t1 = sorted_durations[-2]  # Second longest
+            t2 = sorted_durations[-1]  # Longest
+        else:
+            t1, t2 = sorted_durations[0], sorted_durations[1]
+        
+        p1 = mmp_data[t1]
+        p2 = mmp_data[t2]
+        
+        work1 = p1 * t1
+        work2 = p2 * t2
+        
+        cp = (work2 - work1) / (t2 - t1)
+        w_prime = work1 - cp * t1
+        
+        # Handle negative W' (can happen with poor data)
+        if w_prime < 0:
+            w_prime = 0
+            cp = p2  # Use longest duration power as CP estimate
+        
+        metadata = {
+            "model": "2-point-linear",
+            "durations_used": [t1, t2],
+            "powers_used": [p1, p2],
+            "confidence": "medium",
+            "note": "Standard 2-point linear model (Monod-Scherrer)"
+        }
+        
+        return cp, w_prime, metadata
+    
+    # 3-Point Model (Non-linear Hyperbolic Regression)
+    # Model: P(t) = CP + W'/t
+    durations = np.array(sorted_durations, dtype=float)
+    powers = np.array([mmp_data[d] for d in sorted_durations], dtype=float)
+    
+    # Define hyperbolic model
+    def hyperbolic_model(t, cp, w_prime):
+        return cp + w_prime / t
+    
+    # Initial guess: use 2-point model as starting point
+    t1, t2 = sorted_durations[-2], sorted_durations[-1]
+    p1, p2 = mmp_data[t1], mmp_data[t2]
+    work1, work2 = p1 * t1, p2 * t2
+    cp_guess = (work2 - work1) / (t2 - t1)
+    w_prime_guess = work1 - cp_guess * t1
+    
+    # Ensure positive initial guesses
+    cp_guess = max(cp_guess, powers.min() * 0.5)
+    w_prime_guess = max(w_prime_guess, 10000)
+    
+    try:
+        # Curve fitting with bounds
+        # CP should be between 50% of min power and 95% of longest duration power
+        # W' should be between 5kJ and 50kJ
+        bounds = (
+            [powers.min() * 0.5, 5000],      # Lower bounds [CP_min, W'_min]
+            [powers[-1] * 0.95, 50000]       # Upper bounds [CP_max, W'_max]
+        )
+        
+        params, covariance = curve_fit(
+            hyperbolic_model,
+            durations,
+            powers,
+            p0=[cp_guess, w_prime_guess],
+            bounds=bounds,
+            maxfev=5000
+        )
+        
+        cp_fitted, w_prime_fitted = params
+        
+        # Calculate R² for goodness of fit
+        predictions = hyperbolic_model(durations, cp_fitted, w_prime_fitted)
+        residuals = powers - predictions
+        ss_res = np.sum(residuals ** 2)
+        ss_tot = np.sum((powers - np.mean(powers)) ** 2)
+        r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+        
+        # Determine confidence based on R²
+        if r_squared > 0.95:
+            confidence = "high"
+        elif r_squared > 0.85:
+            confidence = "medium"
+        else:
+            confidence = "low"
+        
+        metadata = {
+            "model": "3-point-hyperbolic",
+            "durations_used": sorted_durations,
+            "powers_used": [mmp_data[d] for d in sorted_durations],
+            "r_squared": round(r_squared, 4),
+            "confidence": confidence,
+            "note": f"Non-linear regression fit (R²={r_squared:.3f})"
+        }
+        
+        return float(cp_fitted), float(w_prime_fitted), metadata
+        
+    except Exception as e:
+        # Fallback to 2-point if curve fitting fails
+        print(f"3-point model failed ({e}), falling back to 2-point")
+        return calculate_cp_wprime(mmp_data, use_3point=False)
+
 class CombustionData(BaseModel):
     watt: int
     fat_oxidation: float
@@ -45,7 +191,9 @@ class MetabolicEngine:
         p_max: float = 800,
         mmp3: float = 350,
         mmp6: float = 300,
-        mmp15: float = 250
+        mmp15: float = 250,
+        use_3point_cp: bool = False,  # ← NUOVO parametro opzionale
+        mmp_additional: Optional[dict[int, float]] = None  # ← Per dati extra (es. 7min, 12min)
     ) -> MetabolicProfile:
         # 1. BASE METABOLISM (BMR, TDEE)
         bmr = MetabolicEngine._calculate_bmr(weight, height, age, gender)
@@ -56,12 +204,19 @@ class MetabolicEngine:
         active_muscle_mass = ffm * 0.31
 
         # Critical Power (CP) Model
-        t6 = 360.0
-        t15 = 900.0
-        work6 = mmp6 * t6
-        work15 = mmp15 * t15
-        cp = (work15 - work6) / (t15 - t6)
-        w_prime_work = work6 - cp * t6
+        # Build MMP data dictionary
+        mmp_data = {
+            180: mmp3,
+            360: mmp6,
+            900: mmp15
+        }
+        
+        # Add additional MMP values if provided
+        if mmp_additional:
+            mmp_data.update(mmp_additional)
+        
+        # Calculate CP and W' using appropriate model
+        cp, w_prime_work, cp_metadata = calculate_cp_wprime(mmp_data, use_3point_cp)
 
         # Thresholds
         cp_to_mlss_ratio = 0.88

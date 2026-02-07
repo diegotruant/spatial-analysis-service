@@ -2,6 +2,64 @@ import polars as pl
 import random
 from typing import Optional, List, Any
 
+def calculate_air_density(altitude: float, temperature: float = 15.0) -> float:
+    """
+    Calculates air density at given altitude and temperature.
+    
+    Args:
+        altitude: Altitude in meters above sea level
+        temperature: Temperature in Celsius (default: 15°C standard conditions)
+    
+    Returns:
+        Air density relative to sea level (1.0 = sea level)
+    
+    Formula: ρ = ρ₀ × (1 - 0.0065 × alt / 288.15)^5.255
+    Temperature correction: -0.5% per °C above 15°C
+    """
+    # Standard atmospheric pressure formula
+    # Barometric formula for air density
+    pressure_ratio = (1 - 0.0065 * altitude / 288.15) ** 5.255
+    
+    # Temperature correction relative to standard (15°C)
+    # Air density decreases by ~0.5% per degree Celsius increase
+    temp_correction = 1 - 0.005 * (temperature - 15.0)
+    
+    # Combined density ratio
+    density_ratio = pressure_ratio * temp_correction
+    
+    return max(0.5, min(1.0, density_ratio))  # Clamp between 0.5 and 1.0
+
+
+def normalize_power_for_altitude(power: float, altitude: float, temperature: float = 15.0) -> float:
+    """
+    Normalizes power output to sea level equivalent.
+    
+    At altitude, air resistance is lower, so the same power produces higher speed.
+    This function converts altitude power to sea-level equivalent.
+    
+    Args:
+        power: Measured power in watts
+        altitude: Altitude in meters
+        temperature: Temperature in Celsius
+    
+    Returns:
+        Normalized power (sea level equivalent)
+    
+    Formula: P_normalized = P_measured × (ρ₀ / ρ_actual)^(1/3)
+    The 1/3 exponent accounts for power being proportional to velocity³
+    """
+    if altitude <= 0 and abs(temperature - 15.0) < 1.0:
+        return power  # No correction needed at sea level and standard temp
+    
+    density_ratio = calculate_air_density(altitude, temperature)
+    
+    # Power correction factor
+    # Power ∝ v³, and v ∝ (P/ρ)^(1/3), so P_normalized = P × (1/ρ)^(1/3)
+    correction_factor = (1.0 / density_ratio) ** (1.0 / 3.0)
+    
+    return power * correction_factor
+
+
 def calculate_np(power_series: pl.Series) -> float:
     """
     Calculates Normalized Power (NP) using Polars.
@@ -47,12 +105,48 @@ def calculate_peak_powers(power_series: pl.Series) -> dict[str, float]:
         "20m": float(power_series.rolling_mean(window_size=1200).max() or 0),
     }
 
-def analyze_activity(df: pl.DataFrame, ftp: float, rhr: Optional[float] = None) -> dict:
+def analyze_activity(
+    df: pl.DataFrame, 
+    ftp: float, 
+    w_prime: Optional[float] = None,
+    altitude_data: Optional[list[float]] = None,
+    temperature: Optional[float] = None
+) -> dict:
     """
     Performs full analysis on a DataFrame containing 'power' column.
+    Now supports altitude/temperature correction for more accurate power metrics.
+    
+    Args:
+        df: DataFrame with 'power' column (and optionally 'heart_rate', 'cadence')
+        ftp: Functional Threshold Power
+        w_prime: W' (anaerobic capacity) - kept for compatibility
+        altitude_data: Optional list of altitude values (meters) for each second
+        temperature: Optional average temperature (Celsius) for the activity
     """
     power_series = df["power"]
     duration = len(power_series)
+    
+    # Altitude correction if data provided
+    altitude_corrected = False
+    avg_altitude = 0.0
+    air_density_ratio = 1.0
+    
+    if altitude_data and len(altitude_data) == len(power_series):
+        # Calculate average altitude for the activity
+        avg_altitude = sum(altitude_data) / len(altitude_data)
+        temp = temperature if temperature is not None else 15.0
+        
+        # Only apply correction if significant altitude (>200m) or non-standard temp
+        if avg_altitude > 200 or abs(temp - 15.0) > 5.0:
+            air_density_ratio = calculate_air_density(avg_altitude, temp)
+            
+            # Normalize each power value
+            normalized_power_values = [
+                normalize_power_for_altitude(p, alt, temp)
+                for p, alt in zip(power_series.to_list(), altitude_data)
+            ]
+            power_series = pl.Series(normalized_power_values)
+            altitude_corrected = True
     
     np_val = calculate_np(power_series)
     
@@ -104,7 +198,7 @@ def analyze_activity(df: pl.DataFrame, ftp: float, rhr: Optional[float] = None) 
     # Calculate peak powers
     peak_powers = calculate_peak_powers(power_series)
 
-    return {
+    result = {
         "duration_seconds": duration,
         "normalized_power": round(np_val, 2),
         "tss": round(tss, 2),
@@ -114,10 +208,28 @@ def analyze_activity(df: pl.DataFrame, ftp: float, rhr: Optional[float] = None) 
         "efficiency_factor": round(ef, 2) if ef else None,
         "decoupling": round(decoupling, 2) if decoupling else None
     }
+    
+    # Add altitude correction metadata if applied
+    if altitude_corrected:
+        result["altitude_correction"] = {
+            "applied": True,
+            "avg_altitude_m": round(avg_altitude, 1),
+            "temperature_c": temperature if temperature is not None else 15.0,
+            "air_density_ratio": round(air_density_ratio, 3),
+            "correction_info": f"Power normalized from {round(avg_altitude, 0)}m to sea level"
+        }
+    else:
+        result["altitude_correction"] = {
+            "applied": False,
+            "reason": "No altitude data provided" if not altitude_data else "Altitude <200m, no correction needed"
+        }
+    
+    return result
 
 def calculate_pmc_trends(tss_history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Calculates PMC trends (CTL, ATL, TSB) from TSS history.
+    Now includes Freshness Alert detection for rapid TSB increases.
     tss_history: List of {"date": "YYYY-MM-DD", "tss": float}
     """
     if not tss_history:
@@ -134,7 +246,7 @@ def calculate_pmc_trends(tss_history: list[dict[str, Any]]) -> list[dict[str, An
     ctl_tc = 42.0
     atl_tc = 7.0
 
-    for entry in history:
+    for i, entry in enumerate(history):
         tss = float(entry.get("tss", 0.0))
         
         # Exponentially Weighted Moving Average
@@ -143,12 +255,49 @@ def calculate_pmc_trends(tss_history: list[dict[str, Any]]) -> list[dict[str, An
         atl = atl + (tss - atl) / atl_tc
         tsb = ctl - atl
         
+        # TSB Freshness Alert Detection
+        # Based on expert feedback: rapid TSB increase may indicate loss of chronic adaptations
+        freshness_alert = None
+        tsb_delta_7d = 0.0
+        
+        # Calculate TSB change over last 7 days
+        if i >= 7:
+            tsb_7days_ago = results[i - 7]["tsb"]
+            tsb_delta_7d = tsb - tsb_7days_ago
+            
+            # Alert conditions:
+            # 1. TSB is above +20 (high freshness)
+            # 2. TSB increased >15 points in <7 days (rapid increase)
+            if tsb > 20 and tsb_delta_7d > 15:
+                freshness_alert = {
+                    "status": "DETRAINING_RISK",
+                    "message": "⚠️ TSB salito troppo rapidamente - Rischio perdita adattamenti cronici",
+                    "tsb_delta_7d": round(tsb_delta_7d, 1),
+                    "recommendation": "Reintrodurre carico gradualmente per mantenere fitness (CTL)"
+                }
+            elif tsb > 25:
+                freshness_alert = {
+                    "status": "VERY_FRESH",
+                    "message": "🏁 Picco di forma - Finestra ottimale per competizione",
+                    "tsb_delta_7d": round(tsb_delta_7d, 1),
+                    "recommendation": "Mantieni questo livello per max 5-7 giorni prima della gara"
+                }
+            elif tsb > 20:
+                freshness_alert = {
+                    "status": "FRESH",
+                    "message": "✨ Forma elevata - Ready to race",
+                    "tsb_delta_7d": round(tsb_delta_7d, 1),
+                    "recommendation": "Ottimo per competizioni o allenamenti di qualità"
+                }
+        
         results.append({
             "date": entry["date"],
             "tss": tss,
             "ctl": round(ctl, 1),
             "atl": round(atl, 1),
-            "tsb": round(tsb, 1)
+            "tsb": round(tsb, 1),
+            "tsb_delta_7d": round(tsb_delta_7d, 1),
+            "freshness_alert": freshness_alert
         })
 
     return results

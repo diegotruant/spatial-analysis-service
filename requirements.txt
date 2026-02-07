@@ -1,6 +1,8 @@
 polars
 fastapi
-uvicorn
-requests
+uvicorn[standard]
 pydantic
+requests
+scipy
 numpy
+psycopg2-binary
