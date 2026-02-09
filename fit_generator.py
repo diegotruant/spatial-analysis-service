@@ -81,8 +81,8 @@ def _write_fit_csv(data: dict, file_handle):
     # Use standard field names. FitCSVTool uses names to look up IDs.
     # Check if 'rr_interval' is accepted. If strictly following SDK, it might be.
     # If not, we might need to use developer data, but let's try standard field.
-    if has_rr:
-        fields.append("rr_interval") # Units: s (if conversion is done right in tool? usually s)
+    # if has_rr:
+    #    fields.append("rr_interval") # Units: s (if conversion is done right in tool? usually s)
         
     # Build Definition Row
     # Local Num 1
@@ -102,15 +102,15 @@ def _write_fit_csv(data: dict, file_handle):
         
         row = ["Data", "1", "record", "timestamp", ts, "", "heart_rate", hr, "bpm", "power", pwr, "watts", "cadence", cad, "rpm", "speed", spd, "m/s"]
         
-        if has_rr:
-            # Add RR
-            rr = sample.get("rr", [])
-            if rr:
-                # Value|Value|Value
-                rr_str = "|".join([str(x) for x in rr])
-                row.extend(["rr_interval", rr_str, "s"])
-            else:
-                row.extend(["rr_interval", "", "s"])
+        # if has_rr:
+        #     # Add RR
+        #     rr = sample.get("rr", [])
+        #     if rr:
+        #         # Value|Value|Value
+        #         rr_str = "|".join([str(x) for x in rr])
+        #         row.extend(["rr_interval", rr_str, "s"])
+        #     else:
+        #         row.extend(["rr_interval", "", "s"])
                 
         writer.writerow(row)
 
