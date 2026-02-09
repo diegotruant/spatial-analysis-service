@@ -76,12 +76,15 @@ curl -X POST https://your-render-url.onrender.com/hrv/dfa \
 **Performance**: Sub-second response time for 10-min activities  
 
 ## 🔧 Render Configuration
+> [!IMPORTANT]
+> **Switch to Docker Runtime**: The Native Python Environment does not include Java, which is required for `FitCSVTool.jar`. Please configure Render to use the `Dockerfile`.
 
-Already configured:
-- Build Command: `pip install -r requirements.txt`
-- Start Command: `python main.py`
-- Port: 10000 (auto from `PORT` env var)
-- Auto-deploy: Enabled on main branch
+- **Runtime**: Docker
+- **Build Command**: (Handled by Dockerfile)
+- **Start Command**: (Handled by Dockerfile)
+- **Env Vars**: 
+  - `PORT`: 10000
+
 
 ## ✅ Ready to Deploy!
 

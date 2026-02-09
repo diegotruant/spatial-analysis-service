@@ -9,6 +9,10 @@ from pdc_engine import PDCEngine, PDCAnalysisRequest, PowerCurvePoint
 
 app = FastAPI(title="Velo Lab Analysis API")
 
+# Include Routers
+from routers import fit
+app.include_router(fit.router)
+
 # --- Models ---
 class AnalysisRequest(BaseModel):
     power_data: list[float]
