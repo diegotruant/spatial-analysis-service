@@ -92,7 +92,14 @@ def _write_fit_csv(data: dict, file_handle):
     
     writer.writerow(def_row)
     
-    # 3. Data Rows
+    # 3. HRV Definition (Message ID 78)
+    # We define it if we have any RR data
+    if has_rr:
+        # Local Num 2
+        # Field: time (array of seconds)
+        writer.writerow(["Definition", "2", "hrv", "time", "1", "s"])
+    
+    # 4. Data Rows
     for sample in data["samples"]:
         ts = _iso_to_garmin_time(sample["timestamp"])
         hr = sample.get("hr", "")
@@ -100,19 +107,22 @@ def _write_fit_csv(data: dict, file_handle):
         cad = sample.get("cadence", "")
         spd = sample.get("speed", "")
         
+        # Write Record
         row = ["Data", "1", "record", "timestamp", ts, "", "heart_rate", hr, "bpm", "power", pwr, "watts", "cadence", cad, "rpm", "speed", spd, "m/s"]
-        
-        # if has_rr:
-        #     # Add RR
-        #     rr = sample.get("rr", [])
-        #     if rr:
-        #         # Value|Value|Value
-        #         rr_str = "|".join([str(x) for x in rr])
-        #         row.extend(["rr_interval", rr_str, "s"])
-        #     else:
-        #         row.extend(["rr_interval", "", "s"])
-                
         writer.writerow(row)
+        
+        # Write HRV if present
+        if has_rr:
+            rr = sample.get("rr", [])
+            if rr:
+                # Value|Value|Value
+                rr_str = "|".join([str(x) for x in rr])
+                # HRV message usually just contains the array.
+                # It doesn't strictly require a timestamp to link to record, 
+                # but often tools might want it. However, standard 'hrv' msg 
+                # doc says 'time' field.
+                # Let's write it.
+                writer.writerow(["Data", "2", "hrv", "time", rr_str, "s"])
 
 def _run_fit_csv_tool(csv_path, fit_path):
     if not os.path.exists(FIT_SDK_JAR_PATH):
