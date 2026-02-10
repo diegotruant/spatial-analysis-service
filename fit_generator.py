@@ -115,14 +115,108 @@ def _write_fit_csv(data: dict, file_handle):
         if has_rr:
             rr = sample.get("rr", [])
             if rr:
-                # Value|Value|Value
                 rr_str = "|".join([str(x) for x in rr])
-                # HRV message usually just contains the array.
-                # It doesn't strictly require a timestamp to link to record, 
-                # but often tools might want it. However, standard 'hrv' msg 
-                # doc says 'time' field.
-                # Let's write it.
                 writer.writerow(["Data", "2", "hrv", "time", rr_str, "s"])
+
+    # --- Summary Calculation ---
+    total_records = len(data["samples"])
+    if total_records > 0:
+        start_ts = _iso_to_garmin_time(data["samples"][0]["timestamp"])
+        end_ts = _iso_to_garmin_time(data["samples"][-1]["timestamp"])
+        total_elapsed_time = end_ts - start_ts
+        total_timer_time = total_elapsed_time # Assuming no pauses for now
+        
+        # Aggregates
+        pwrs = [float(s["power"]) for s in data["samples"] if "power" in s and s["power"] is not None]
+        hrs = [float(s["hr"]) for s in data["samples"] if "hr" in s and s["hr"] is not None]
+        cads = [float(s["cadence"]) for s in data["samples"] if "cadence" in s and s["cadence" ] is not None]
+        speeds = [float(s["speed"]) for s in data["samples"] if "speed" in s and s["speed"] is not None]
+        
+        avg_power = sum(pwrs) / len(pwrs) if pwrs else 0
+        max_power = max(pwrs) if pwrs else 0
+        avg_hr = sum(hrs) / len(hrs) if hrs else 0
+        max_hr = max(hrs) if hrs else 0
+        avg_cad = sum(cads) / len(cads) if cads else 0
+        max_cad = max(cads) if cads else 0
+        avg_speed = sum(speeds) / len(speeds) if speeds else 0
+        max_speed = max(speeds) if speeds else 0
+        
+        # Distance (approximate if not in samples, or take last if cumulative)
+        # We wrote 'speed' throughout, let's assume valid speed
+        # Simple Riemann sum for distance if not provided
+        total_distance = sum(speeds) # 1 sec intervals = speed * 1
+        
+        # 5. Lap Message (Msg ID 19)
+        # Definition
+        # timestamp, start_time, total_elapsed_time, total_timer_time, total_distance, 
+        # avg_speed, max_speed, avg_heart_rate, max_heart_rate, avg_cadence, max_cadence, avg_power, max_power
+        writer.writerow(["Definition", "3", "lap", 
+                         "timestamp", "1", "", 
+                         "start_time", "1", "", 
+                         "total_elapsed_time", "1", "s",
+                         "total_timer_time", "1", "s",
+                         "total_distance", "1", "m",
+                         "avg_speed", "1", "m/s",
+                         "max_speed", "1", "m/s",
+                         "avg_heart_rate", "1", "bpm",
+                         "max_heart_rate", "1", "bpm",
+                         "avg_cadence", "1", "rpm",
+                         "max_cadence", "1", "rpm",
+                         "avg_power", "1", "watts",
+                         "max_power", "1", "watts"])
+        
+        writer.writerow(["Data", "3", "lap", 
+                         end_ts, "", 
+                         start_ts, "",
+                         total_elapsed_time, "s",
+                         total_timer_time, "s",
+                         f"{total_distance:.2f}", "m",
+                         f"{avg_speed:.3f}", "m/s",
+                         f"{max_speed:.3f}", "m/s",
+                         int(avg_hr), "bpm",
+                         int(max_hr), "bpm",
+                         int(avg_cad), "rpm",
+                         int(max_cad), "rpm",
+                         int(avg_power), "watts",
+                         int(max_power), "watts"])
+
+        # 6. Session Message (Msg ID 18)
+        # Definition - similar to Lap + sport
+        writer.writerow(["Definition", "4", "session", 
+                         "timestamp", "1", "", 
+                         "start_time", "1", "", 
+                         "total_elapsed_time", "1", "s",
+                         "total_timer_time", "1", "s",
+                         "total_distance", "1", "m",
+                         "avg_speed", "1", "m/s",
+                         "max_speed", "1", "m/s",
+                         "avg_heart_rate", "1", "bpm",
+                         "max_heart_rate", "1", "bpm",
+                         "avg_cadence", "1", "rpm",
+                         "max_cadence", "1", "rpm",
+                         "avg_power", "1", "watts",
+                         "max_power", "1", "watts",
+                         "sport", "1", "",
+                         "sub_sport", "1", ""]) # generic
+
+        # Sport: Cycling = 2
+        # SubSport: Generic = 0
+        writer.writerow(["Data", "4", "session", 
+                         end_ts, "", 
+                         start_ts, "",
+                         total_elapsed_time, "s",
+                         total_timer_time, "s",
+                         f"{total_distance:.2f}", "m",
+                         f"{avg_speed:.3f}", "m/s",
+                         f"{max_speed:.3f}", "m/s",
+                         int(avg_hr), "bpm",
+                         int(max_hr), "bpm",
+                         int(avg_cad), "rpm",
+                         int(max_cad), "rpm",
+                         int(avg_power), "watts",
+                         int(max_power), "watts",
+                         "2", "", # Cycling
+                         "0", ""])
 
 def _run_fit_csv_tool(csv_path, fit_path):
     if not os.path.exists(FIT_SDK_JAR_PATH):
