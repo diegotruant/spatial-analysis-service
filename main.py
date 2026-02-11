@@ -22,6 +22,7 @@ class AnalysisRequest(BaseModel):
     w_prime: float = 20000
     altitude_data: Optional[list[float]] = None  # Altitude in meters for each second
     temperature: Optional[float] = None  # Average temperature in Celsius
+    rr_intervals: Optional[list[float]] = None # List of RR intervals in ms for Alpha-1 analysis
 
 class PMCRequest(BaseModel):
     tss_history: list[dict[str, Union[float, str]]] # List of {"date": "YYYY-MM-DD", "tss": 100}
@@ -80,6 +81,19 @@ async def analyze(request: AnalysisRequest):
             request.altitude_data,
             request.temperature
         )
+        
+        # [NEW] DFA Alpha-1 Analysis (Experimental)
+        if request.rr_intervals and len(request.rr_intervals) > 0:
+            from experimental_models.dfa_alpha1 import DFAAlpha1
+            # Calculate rolling alpha1 (standard 2 min window)
+            alpha1_series = DFAAlpha1.calculate_rolling_alpha1(request.rr_intervals)
+            results["alpha1_analysis"] = alpha1_series
+            
+        # [NEW] Dynamic W' Balance (DCP) (Experimental)
+        from experimental_models.w_prime_dcp import WPrimeDCP
+        w_bal_dynamic = WPrimeDCP.calculate_balance(request.power_data, request.ftp, request.w_prime)
+        results["w_balance_dynamic"] = w_bal_dynamic
+        
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
