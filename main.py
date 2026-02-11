@@ -92,13 +92,6 @@ async def calculate_pmc(request: PMCRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/pdc/analyze")
-async def analyze_pdc(request: PDCAnalysisRequest):
-    try:
-        result = PDCEngine.analyze_power_duration(request.power_curve)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 # --- DFA Analysis Endpoints ---
 @app.post("/hrv/dfa")
