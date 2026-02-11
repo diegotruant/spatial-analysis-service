@@ -99,19 +99,101 @@ def _write_fit_csv(data: dict, file_handle):
         # Field: time (array of seconds)
         writer.writerow(["Definition", "2", "hrv", "time", "1", "s"])
     
-    # 4. Data Rows
+    # --- Developer Fields Setup ---
+    # 1. Developer Data ID (Msg 207)
+    # We use a fixed Application ID for VeloLab
+    writer.writerow(["Definition", "5", "developer_data_id", "developer_data_index", "1", "", "application_id", "16", "", "application_version", "1", ""])
+    # App ID: VeloLabAnalytics (hashed or random UUID)
+    # 56 65 6C 6F 4C 61 62 41 6E 61 6C 79 74 69 63 73 (Hex for VeloLabAnalytics - 16 bytes)
+    app_id = "56656C6F4C6162416E616C7974696373"
+    writer.writerow(["Data", "5", "developer_data_id", "developer_data_index", "0", "", "application_id", app_id, "", "application_version", "100", ""])
+
+    # 2. Field Description (Msg 206)
+    # Define "Alpha1" (Field 0)
+    # developer_data_index=0, field_definition_number=0, field_name="Alpha1", units="score", native_mesg_num=20 (Record), fit_base_type_id=136 (float32)
+    writer.writerow(["Definition", "6", "field_description", 
+                     "developer_data_index", "1", "", 
+                     "field_definition_number", "1", "", 
+                     "fit_base_type_id", "1", "", 
+                     "field_name", "64", "", 
+                     "units", "16", "", 
+                     "native_mesg_num", "1", ""])
+    
+    writer.writerow(["Data", "6", "field_description", 
+                     "developer_data_index", "0", "", 
+                     "field_definition_number", "0", "", 
+                     "fit_base_type_id", "136", "", 
+                     "field_name", "Alpha1", "", 
+                     "units", "score", "", 
+                     "native_mesg_num", "20", ""])
+
+    # 3. Data Rows with Alpha1 support
+    # We assume 'alpha1' might be in the samples now
     for sample in data["samples"]:
         ts = _iso_to_garmin_time(sample["timestamp"])
         hr = sample.get("hr", "")
         pwr = sample.get("power", "")
         cad = sample.get("cadence", "")
         spd = sample.get("speed", "")
+        alpha1 = sample.get("alpha1", "")
         
-        # Write Record
+        # Base Row
         row = ["Data", "1", "record", "timestamp", ts, "", "heart_rate", hr, "bpm", "power", pwr, "watts", "cadence", cad, "rpm", "speed", spd, "m/s"]
+        
+        # Add Developer Field if Alpha1 is present
+        if alpha1 != "":
+            # We append the Developer Field data
+            # Format: developer_data_index, 0, field_definition_number, 0, value, <val>
+            # NOTE: Logic to append to the SAME row or use a different definition?
+            # Integration with FitCSVTool usually requires the Definition to MATCH the Data row.
+            # So if some rows have Alpha1 and others don't, we theoretically need 2 definitions.
+            # BUT, standard practice is to use one definition and leave empty if missing? 
+            # FitCSVTool handles empty strings as null/missing usually.
+            pass 
+        
+        # RE-THINK: we need a definition that INCLUDES the developer field if we want to write it.
+        # So we should update Definition 1 (Record) to include the dev field slots, or make a new Definition.
+        # Let's verify if we can just append to the existing row without it being in definition? No.
+        # So we must redefine Record.
+    
+    # Redefine Record (Def 1) to include Alpha1 potentially
+    # Efficient strategy: Only use the definition with Alpha1? Or use two definitions?
+    # Simpler: Just define it with Alpha1 and leave it empty if not present.
+    
+    # Re-writing Definition 1 (Record)
+    # Local Num 1
+    def_row = ["Definition", "1", "record"]
+    for f in fields: # standard fields
+        def_row.extend([f, "1", ""])
+    
+    # Add Developer Field columns to Definition
+    # developer_data_index, field_definition_number, value
+    def_row.extend(["developer_data_index", "1", "", "field_definition_number", "1", "", "value", "1", ""])
+    
+    writer.writerow(def_row)
+    
+    # Now write data
+    for sample in data["samples"]:
+        ts = _iso_to_garmin_time(sample["timestamp"])
+        hr = sample.get("hr", "")
+        pwr = sample.get("power", "")
+        cad = sample.get("cadence", "")
+        spd = sample.get("speed", "")
+        alpha1 = sample.get("alpha1", "")
+        
+        row = ["Data", "1", "record", "timestamp", ts, "", "heart_rate", hr, "bpm", "power", pwr, "watts", "cadence", cad, "rpm", "speed", spd, "m/s"]
+        
+        # Always write the developer field columns, even if empty
+        if alpha1 != "":
+            # dev_index=0, field_def_num=0, value=alpha1
+            row.extend(["0", "", "0", "", str(alpha1), "score"])
+        else:
+            # write empty
+            row.extend(["", "", "", "", "", ""])
+            
         writer.writerow(row)
         
-        # Write HRV if present
+        # Write HRV if present (Message 2 - as before)
         if has_rr:
             rr = sample.get("rr", [])
             if rr:
