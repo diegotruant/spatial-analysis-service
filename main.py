@@ -96,7 +96,10 @@ async def analyze(request: AnalysisRequest):
         
         return results
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        error_detail = f"{str(e)}\n{traceback.format_exc()}"
+        print(error_detail) # Log to console
+        raise HTTPException(status_code=500, detail=error_detail)
 
 @app.post("/pmc")
 async def calculate_pmc(request: PMCRequest):
