@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Union, Any
+from typing import Optional, Union, Any, Dict
 import polars as pl
 from analysis_prototype import analyze_activity, calculate_pmc_trends
 from metabolic_engine import MetabolicEngine, MetabolicProfile
