@@ -9,9 +9,21 @@ from pdc_engine import PDCEngine, PDCAnalysisRequest, PowerCurvePoint
 
 app = FastAPI(title="Velo Lab Analysis API")
 
+# --- CORS Configuration ---
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Include Routers
-from routers import fit
+from routers import fit, experimental
 app.include_router(fit.router)
+app.include_router(experimental.router)
 
 # --- Models ---
 class AnalysisRequest(BaseModel):

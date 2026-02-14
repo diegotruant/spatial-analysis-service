@@ -27,6 +27,7 @@ def generate_fit_from_json(json_data: dict) -> str:
     
     with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as csv_file:
         csv_path = csv_file.name
+        print(f"DEBUG: CSV Path: {csv_path}")
         _write_fit_csv(json_data, csv_file)
     
     fit_path = csv_path.replace(".csv", ".fit")
@@ -42,8 +43,9 @@ def generate_fit_from_json(json_data: dict) -> str:
         raise e
         
     # Cleanup CSV
-    if os.path.exists(csv_path):
-        os.remove(csv_path)
+    # Cleanup CSV
+    # if os.path.exists(csv_path):
+    #    os.remove(csv_path)
         
     return fit_path
 
@@ -84,13 +86,8 @@ def _write_fit_csv(data: dict, file_handle):
     # if has_rr:
     #    fields.append("rr_interval") # Units: s (if conversion is done right in tool? usually s)
         
-    # Build Definition Row
-    # Local Num 1
-    def_row = ["Definition", "1", "record"]
-    for f in fields:
-        def_row.extend([f, "1", ""]) # Field Name, Count, Units (empty in def)
-    
-    writer.writerow(def_row)
+    # Build Definition Row (moved down to include developer fields)
+    pass
     
     # 3. HRV Definition (Message ID 78)
     # We define it if we have any RR data
@@ -103,9 +100,9 @@ def _write_fit_csv(data: dict, file_handle):
     # 1. Developer Data ID (Msg 207)
     # We use a fixed Application ID for VeloLab
     writer.writerow(["Definition", "5", "developer_data_id", "developer_data_index", "1", "", "application_id", "16", "", "application_version", "1", ""])
-    # App ID: VeloLabAnalytics (hashed or random UUID)
-    # 56 65 6C 6F 4C 61 62 41 6E 61 6C 79 74 69 63 73 (Hex for VeloLabAnalytics - 16 bytes)
-    app_id = "56656C6F4C6162416E616C7974696373"
+    # App ID: VeloLabAnalytics (16 bytes)
+    # Decimal ASCII: 86,101,108,111,76,97,98,65,110,97,108,121,116,105,99,115
+    app_id = "86|101|108|111|76|97|98|65|110|97|108|121|116|105|99|115"
     writer.writerow(["Data", "5", "developer_data_id", "developer_data_index", "0", "", "application_id", app_id, "", "application_version", "100", ""])
 
     # 2. Field Description (Msg 206)
@@ -129,32 +126,13 @@ def _write_fit_csv(data: dict, file_handle):
 
     # 3. Data Rows with Alpha1 support
     # We assume 'alpha1' might be in the samples now
-    for sample in data["samples"]:
-        ts = _iso_to_garmin_time(sample["timestamp"])
-        hr = sample.get("hr", "")
-        pwr = sample.get("power", "")
-        cad = sample.get("cadence", "")
-        spd = sample.get("speed", "")
-        alpha1 = sample.get("alpha1", "")
+    # We moved the definition down. Nothing to loop here yet.
+    pass
         
         # Base Row
-        row = ["Data", "1", "record", "timestamp", ts, "", "heart_rate", hr, "bpm", "power", pwr, "watts", "cadence", cad, "rpm", "speed", spd, "m/s"]
+
         
-        # Add Developer Field if Alpha1 is present
-        if alpha1 != "":
-            # We append the Developer Field data
-            # Format: developer_data_index, 0, field_definition_number, 0, value, <val>
-            # NOTE: Logic to append to the SAME row or use a different definition?
-            # Integration with FitCSVTool usually requires the Definition to MATCH the Data row.
-            # So if some rows have Alpha1 and others don't, we theoretically need 2 definitions.
-            # BUT, standard practice is to use one definition and leave empty if missing? 
-            # FitCSVTool handles empty strings as null/missing usually.
-            pass 
-        
-        # RE-THINK: we need a definition that INCLUDES the developer field if we want to write it.
-        # So we should update Definition 1 (Record) to include the dev field slots, or make a new Definition.
-        # Let's verify if we can just append to the existing row without it being in definition? No.
-        # So we must redefine Record.
+
     
     # Redefine Record (Def 1) to include Alpha1 potentially
     # Efficient strategy: Only use the definition with Alpha1? Or use two definitions?
@@ -167,16 +145,16 @@ def _write_fit_csv(data: dict, file_handle):
         def_row.extend([f, "1", ""])
     
     # Add Developer Field columns to Definition
-    # developer_data_index, field_definition_number, value
-    def_row.extend(["developer_data_index", "1", "", "field_definition_number", "1", "", "value", "1", ""])
+    # Use the Field Name defined in Field Description ("Alpha1")
+    def_row.extend(["Alpha1", "1", "score"])
     
     writer.writerow(def_row)
     
     # Now write data
     for sample in data["samples"]:
         ts = _iso_to_garmin_time(sample["timestamp"])
-        hr = sample.get("hr", "")
-        pwr = sample.get("power", "")
+        hr = sample.get("hr", sample.get("heart_rate", ""))
+        pwr = sample.get("power", sample.get("pwr", ""))
         cad = sample.get("cadence", "")
         spd = sample.get("speed", "")
         alpha1 = sample.get("alpha1", "")
@@ -185,11 +163,10 @@ def _write_fit_csv(data: dict, file_handle):
         
         # Always write the developer field columns, even if empty
         if alpha1 != "":
-            # dev_index=0, field_def_num=0, value=alpha1
-            row.extend(["0", "", "0", "", str(alpha1), "score"])
+            row.extend(["Alpha1", str(alpha1), "score"])
         else:
             # write empty
-            row.extend(["", "", "", "", "", ""])
+            row.extend(["Alpha1", "", "score"])
             
         writer.writerow(row)
         
