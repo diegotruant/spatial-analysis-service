@@ -1,67 +1,59 @@
 import requests
 import json
-import random
 import time
+import sys
 
-# URL = "http://localhost:10000/analyze" # Local test
-URL = "https://spatial-analysis-service.onrender.com/analyze" # Production
+# URL = "http://localhost:8000" # Local debug
+URL = "https://spatial-analysis-service.onrender.com" # Production
 
-def test_analyze_experimental():
-    print(f"Testing {URL}...")
-    
-    # Simulate 10 minutes of data (600 seconds)
-    # Power: Ramp from 100 to 300
-    power_data = [100 + (200 * i / 600) for i in range(600)]
-    
-    # RR Intervals: Simulate 60bpm (1000ms) with some noise
-    # We need a list of RR intervals for the whole session.
-    # 10 mins @ 60bpm = ~600 beats.
-    rr_intervals = [1000 + random.uniform(-50, 50) for _ in range(600)]
-    
+def test_health():
+    print(f"Checking {URL}/health...")
+    try:
+        res = requests.get(f"{URL}/health")
+        if res.status_code == 200:
+            print("✅ Health Check Passed:", res.json())
+            return True
+        else:
+            print(f"❌ Health Check Failed: {res.status_code} - {res.text}")
+            return False
+    except Exception as e:
+        print(f"❌ Connection Error: {e}")
+        return False
+
+def test_w_prime_balance():
+    print(f"\nTesting {URL}/experimental/w_prime_balance...")
     payload = {
-        "power_data": power_data,
-        "rr_intervals": rr_intervals,
-        "ftp": 250,
+        "power_data": [100.0, 100.0, 400.0, 400.0],
+        "cp": 250,
         "w_prime": 20000
     }
     
     try:
-        start_time = time.time()
-        response = requests.post(URL, json=payload)
-        duration = time.time() - start_time
-        
-        print(f"Status Code: {response.status_code}")
-        print(f"Duration: {duration:.2f}s")
-        
-        if response.status_code == 200:
-            data = response.json()
-            keys = data.keys()
-            print("Response Keys:", list(keys))
-            
-            # Check for Experimental Fields
-            if "alpha1_analysis" in data:
-                print("✅ Alpha-1 Analysis present")
-                a1 = data["alpha1_analysis"]
-                print(f"   - {len(a1)} data points returned")
-                if len(a1) > 0:
-                    print(f"   - Sample: {a1[0]}")
+        res = requests.post(f"{URL}/experimental/w_prime_balance", json=payload)
+        if res.status_code == 200:
+            data = res.json()
+            if "w_prime_balance" in data and len(data["w_prime_balance"]) == 4:
+                print("✅ W' Balance Endpoint Passed")
+                return True
             else:
-                print("❌ Alpha-1 Analysis MISSING")
-                
-            if "w_balance_dynamic" in data:
-                print("✅ Dynamic W' Balance present")
-                wd = data["w_balance_dynamic"]
-                print(f"   - {len(wd)} data points returned")
-            else:
-                print("❌ Dynamic W' Balance MISSING")
-                
-            if "w_balance" in data:
-                print("✅ Standard W' Balance present")
+                print(f"❌ Invalid Response Format: {data}")
+                return False
         else:
-            print("Error Response:", response.text)
-            
+            print(f"❌ Request Failed: {res.status_code} - {res.text}")
+            return False
     except Exception as e:
-        print(f"Request Failed: {e}")
+        print(f"❌ Connection Error: {e}")
+        return False
 
 if __name__ == "__main__":
-    test_analyze_experimental()
+    print(f"Waiting for deployment to propagate (sleeping 10s)...")
+    time.sleep(10) 
+    
+    if not test_health():
+        sys.exit(1)
+        
+    if not test_w_prime_balance():
+        print("⚠️ Experimental endpoint might not be deployed yet.")
+        sys.exit(1)
+        
+    print("\n🚀 DEPLOYMENT VERIFIED SUCCESSFUL")
