@@ -30,44 +30,45 @@
 
 ## 📝 Deployment Steps
 
-1. **Commit Changes**
+### 1. Preparation
+1. **Migrations**: Ensure Supabase migration is run (locally or via CI/CD):
+   ```bash
+   python create_tasks_table.py
+   ```
+2. **Environment Variables**: Update Render Dashboard with:
+   - `DATABASE_URL`: `postgresql://...` (Supabase Connection String)
+   - `ALLOWED_ORIGINS`: `https://your-app-url.com,http://localhost:3000`
+
+### 2. Commit & Push
 ```bash
 git add .
-git commit -m "feat: Add DFA alpha 1 analysis and VT1 detection"
+git commit -m "feat: Hardening, Performance (Async), and Testing"
 git push origin main
 ```
 
-2. **Render Auto-Deploy**
-- Render will detect push
-- Build with updated requirements.txt
-- Deploy new version
-
-3. **Verify Deployment**
+### 3. Verification
 ```bash
-curl https://your-render-url.onrender.com/
-# Expected: {"message": "Velo Lab Analysis API - RR/DFA Enabled", "version": "1.4.0"}
+# Check Health
+curl https://your-render-url.onrender.com/health
+
+# Check Async Flow
+curl -X POST https://your-render-url.onrender.com/analyze/async ...
 ```
 
-4. **Test DFA Endpoint**
-```bash
-curl -X POST https://your-render-url.onrender.com/hrv/dfa \
-  -H "Content-Type: application/json" \
-  -d '{"rr_data": [...], "power_data": [...]}'
-```
+## ⚡ What's New in v1.5.0 (Hardening & Performance)
 
-## ⚡ What's New in v1.4.0
+### Security
+- **Secure CORS**: No more wildcard origins.
+- **Error Sanitization**: Stack traces hidden from clients.
+- **Structured Logging**: JSON-ready server logs.
 
-### DFA Alpha 1 Engine
-- Real-time VT1 detection during activities
-- Sliding window analysis (configurable)
-- High-precision detrended fluctuation analysis
-- Automatic confidence scoring
+### Performance
+- **Async Analysis**: `POST /analyze/async` for non-blocking execution.
+- **Supabase Integration**: Persistent task tracking via `analysis_tasks` table.
 
-### Enhanced Capabilities
-- Identifies first ventilatory threshold without lactate testing
-- Power @ VT1 output
-- DFA timeline visualization data
-- Supports timestamped RR interval input
+### Quality
+- **Unified Testing**: `pytest` suite with partial coverage.
+- **Robustness**: Scipy is now a hard requirement.
 
 ## 🎯 Expected Impact
 

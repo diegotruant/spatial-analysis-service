@@ -1,14 +1,8 @@
 import math
 from typing import Optional, Literal, Union, Any
 from pydantic import BaseModel
-
-# Try to import scipy for 3-point CP model, fallback to 2-point if unavailable
-try:
-    from scipy.optimize import curve_fit
-    import numpy as np
-    SCIPY_AVAILABLE = True
-except ImportError:
-    SCIPY_AVAILABLE = False
+from scipy.optimize import curve_fit
+import numpy as np
 
 
 def calculate_cp_wprime(
@@ -17,25 +11,6 @@ def calculate_cp_wprime(
 ) -> tuple[float, float, dict]:
     """
     Calculates Critical Power (CP) and W' using 2-point or 3-point model.
-    
-    Args:
-        mmp_data: Dictionary of {duration_seconds: power_watts}
-                  e.g., {180: 350, 360: 320, 900: 280, 420: 310, 720: 295}
-        use_3point: If True and scipy available, use 3-point non-linear regression
-    
-    Returns:
-        (cp, w_prime, metadata)
-        - cp: Critical Power in watts
-        - w_prime: Anaerobic work capacity in joules
-        - metadata: Dict with model info, confidence, etc.
-    
-    Models:
-        2-point: Linear model using 2 durations (typically 6' and 15')
-                 CP = (W₂ - W₁) / (t₂ - t₁)
-                 W' = W₁ - CP × t₁
-        
-        3-point: Non-linear hyperbolic model P = CP + W'/t
-                 Uses scipy.optimize.curve_fit for best fit
     """
     if len(mmp_data) < 2:
         raise ValueError("Need at least 2 MMP values to calculate CP")
@@ -43,8 +18,9 @@ def calculate_cp_wprime(
     # Sort by duration
     sorted_durations = sorted(mmp_data.keys())
     
-    # 2-Point Model (Linear - Default and Fallback)
-    if not use_3point or not SCIPY_AVAILABLE or len(mmp_data) < 3:
+    # 2-Point Model (Linear - Default)
+    # Fallback to 2-point if not enough data points for 3-point
+    if not use_3point or len(mmp_data) < 3:
         # Use longest two durations for 2-point model
         # Typically 6min (360s) and 15min (900s)
         if len(sorted_durations) >= 2:
