@@ -3,7 +3,7 @@ import os
 import sys
 import uuid
 import json
-import psycopg2
+# import psycopg2 # No longer needed directly here
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -14,6 +14,7 @@ from analysis_prototype import analyze_activity, calculate_pmc_trends
 from metabolic_engine import MetabolicEngine, MetabolicProfile
 from hrv_engine import HRVEngine
 from pdc_engine import PDCEngine, PDCAnalysisRequest, PowerCurvePoint
+from database import Database # Import the new Database class
 
 # --- Logging Configuration ---
 logging.basicConfig(
@@ -26,25 +27,33 @@ logger = logging.getLogger("velo-lab-analysis")
 app = FastAPI(title="Velo Lab Analysis API")
 
 # --- Database & Config ---
-# Database connection from .env or hardcoded fallback
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres.xdqvjqqwywuguuhsehxm:emvtzC2B2Duu6PLg@aws-1-eu-west-3.pooler.supabase.com:6543/postgres")
+# Database logic moved to database.py
 
-def get_db_connection():
-    return psycopg2.connect(DATABASE_URL)
+@app.on_event("startup")
+async def startup_event():
+    try:
+        Database.initialize()
+    except Exception as e:
+        logger.error("Failed to initialize database pool on startup")
+        # Depending on criticality, you might want to exit here
+        pass 
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    Database.close()
 
 class TaskRepository:
     @staticmethod
     def create_task(task_id: str) -> None:
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO analysis_tasks (task_id, status) VALUES (%s, %s)",
-                (task_id, 'pending')
-            )
-            conn.commit()
-            cursor.close()
-            conn.close()
+            # Use the context manager to get a cursor from the pool
+            with Database.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO analysis_tasks (task_id, status) VALUES (%s, %s)",
+                        (task_id, 'pending')
+                    )
+                conn.commit()
         except Exception as e:
             logger.error(f"Failed to create task {task_id}: {e}")
             raise
@@ -52,40 +61,36 @@ class TaskRepository:
     @staticmethod
     def update_task(task_id: str, status: str, result: Optional[dict] = None, error: Optional[str] = None) -> None:
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            query = "UPDATE analysis_tasks SET status = %s, updated_at = NOW()"
-            params = [status]
-            
-            if result:
-                query += ", result = %s"
-                params.append(json.dumps(result))
-            if error:
-                query += ", error = %s"
-                params.append(error)
-                
-            query += " WHERE task_id = %s"
-            params.append(task_id)
-            
-            cursor.execute(query, tuple(params))
-            conn.commit()
-            cursor.close()
-            conn.close()
+            with Database.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    query = "UPDATE analysis_tasks SET status = %s, updated_at = NOW()"
+                    params = [status]
+                    
+                    if result:
+                        query += ", result = %s"
+                        params.append(json.dumps(result))
+                    if error:
+                        query += ", error = %s"
+                        params.append(error)
+                        
+                    query += " WHERE task_id = %s"
+                    params.append(task_id)
+                    
+                    cursor.execute(query, tuple(params))
+                conn.commit()
         except Exception as e:
             logger.error(f"Failed to update task {task_id}: {e}")
 
     @staticmethod
     def get_task(task_id: str) -> Optional[dict]:
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT task_id, status, result, error, created_at, updated_at FROM analysis_tasks WHERE task_id = %s",
-                (task_id,)
-            )
-            row = cursor.fetchone()
-            cursor.close()
-            conn.close()
+            with Database.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT task_id, status, result, error, created_at, updated_at FROM analysis_tasks WHERE task_id = %s",
+                        (task_id,)
+                    )
+                    row = cursor.fetchone()
             
             if row:
                 return {
