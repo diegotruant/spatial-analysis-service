@@ -172,6 +172,44 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Authentication ---
+from fastapi.security import APIKeyHeader
+from fastapi import Security, Depends
+
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+async def get_api_key(api_key_header: str = Security(api_key_header)):
+    service_api_key = os.getenv("SERVICE_API_KEY")
+    if not service_api_key:
+        logger.warning("SERVICE_API_KEY not set! Rejecting all requests for security.")
+        raise HTTPException(status_code=500, detail="Server misconfigured: Missing API Key")
+        
+    if api_key_header == service_api_key:
+        return api_key_header
+    
+    raise HTTPException(status_code=403, detail="Could not validate credentials")
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    # Skip health check and root
+    if request.url.path in ["/health", "/", "/docs", "/openapi.json"]:
+        return await call_next(request)
+        
+    if request.method == "OPTIONS": # standard CORS preflight
+        return await call_next(request)
+
+    service_api_key = os.getenv("SERVICE_API_KEY")
+    if not service_api_key:
+        logger.error("SERVICE_API_KEY not set.")
+        return JSONResponse(status_code=500, content={"detail": "Server Authentication Misconfigured"})
+
+    client_key = request.headers.get("X-API-Key")
+    if client_key != service_api_key:
+        return JSONResponse(status_code=403, content={"detail": "Invalid or missing API Key"})
+
+    return await call_next(request)
+
+
 # --- Global Error Handling ---
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
