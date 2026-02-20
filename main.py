@@ -178,10 +178,14 @@ from fastapi import Security, Depends
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
+def _resolve_service_api_key() -> Optional[str]:
+    # Compatibility mode: accept either env var name.
+    return os.getenv("SERVICE_API_KEY") or os.getenv("ANALYSIS_SERVICE_API_KEY")
+
 async def get_api_key(api_key_header: str = Security(api_key_header)):
-    service_api_key = os.getenv("SERVICE_API_KEY")
+    service_api_key = _resolve_service_api_key()
     if not service_api_key:
-        logger.warning("SERVICE_API_KEY not set! Rejecting all requests for security.")
+        logger.warning("No API key configured (SERVICE_API_KEY / ANALYSIS_SERVICE_API_KEY). Rejecting requests.")
         raise HTTPException(status_code=500, detail="Server misconfigured: Missing API Key")
         
     if api_key_header == service_api_key:
@@ -198,9 +202,9 @@ async def auth_middleware(request: Request, call_next):
     if request.method == "OPTIONS": # standard CORS preflight
         return await call_next(request)
 
-    service_api_key = os.getenv("SERVICE_API_KEY")
+    service_api_key = _resolve_service_api_key()
     if not service_api_key:
-        logger.error("SERVICE_API_KEY not set.")
+        logger.error("No API key configured (SERVICE_API_KEY / ANALYSIS_SERVICE_API_KEY).")
         return JSONResponse(status_code=500, content={"detail": "Server Authentication Misconfigured"})
 
     client_key = request.headers.get("X-API-Key")
