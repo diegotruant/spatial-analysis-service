@@ -13,5 +13,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Use exec form, hardcoded to 8080 which matches Cloud Run default
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Bind to Render-provided PORT at runtime.
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}"]
