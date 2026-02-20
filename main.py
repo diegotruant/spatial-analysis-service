@@ -180,7 +180,8 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 def _resolve_service_api_key() -> Optional[str]:
     # Compatibility mode: accept either env var name.
-    return os.getenv("SERVICE_API_KEY") or os.getenv("ANALYSIS_SERVICE_API_KEY")
+    key = os.getenv("SERVICE_API_KEY") or os.getenv("ANALYSIS_SERVICE_API_KEY")
+    return key.strip() if key else None
 
 async def get_api_key(api_key_header: str = Security(api_key_header)):
     service_api_key = _resolve_service_api_key()
@@ -188,7 +189,8 @@ async def get_api_key(api_key_header: str = Security(api_key_header)):
         logger.warning("No API key configured (SERVICE_API_KEY / ANALYSIS_SERVICE_API_KEY). Rejecting requests.")
         raise HTTPException(status_code=500, detail="Server misconfigured: Missing API Key")
         
-    if api_key_header == service_api_key:
+    client_key = (api_key_header or "").strip()
+    if client_key == service_api_key:
         return api_key_header
     
     raise HTTPException(status_code=403, detail="Could not validate credentials")
@@ -207,7 +209,7 @@ async def auth_middleware(request: Request, call_next):
         logger.error("No API key configured (SERVICE_API_KEY / ANALYSIS_SERVICE_API_KEY).")
         return JSONResponse(status_code=500, content={"detail": "Server Authentication Misconfigured"})
 
-    client_key = request.headers.get("X-API-Key")
+    client_key = (request.headers.get("X-API-Key") or "").strip()
     if client_key != service_api_key:
         return JSONResponse(status_code=403, content={"detail": "Invalid or missing API Key"})
 
